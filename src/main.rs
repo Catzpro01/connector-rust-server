@@ -77,16 +77,21 @@ async fn main() {
         swarming: Arc::clone(&swarming),
     };
 
-    // Initialize Telegram bot
-    let token = std::env::var("TELEGRAM_BOT_TOKEN")
-        .unwrap_or_else(|_| "8696129901:AAGu_jCm3YOworkFTSZ7xq_zO5JFl9_tZ3U".to_string());
+    // Initialize Telegram bot if enabled
+    let enable_tg = std::env::var("ENABLE_TELEGRAM_BOT").unwrap_or_else(|_| "1".to_string()) == "1";
+    if enable_tg {
+        let token = std::env::var("TELEGRAM_BOT_TOKEN")
+            .unwrap_or_else(|_| "8696129901:AAGu_jCm3YOworkFTSZ7xq_zO5JFl9_tZ3U".to_string());
 
-    let bot = TelegramAdminBot::new(&token, Arc::clone(&cost_tracker), Arc::clone(&heritage));
-    bot.set_admin_chat_id(5602465864);
+        let bot = TelegramAdminBot::new(&token, Arc::clone(&cost_tracker), Arc::clone(&heritage));
+        bot.set_admin_chat_id(5602465864);
 
-    tokio::spawn(async move {
-        bot.run_poll_loop().await;
-    });
+        tokio::spawn(async move {
+            bot.run_poll_loop().await;
+        });
+    } else {
+        println!("[connector-rs] Telegram bot disabled by ENABLE_TELEGRAM_BOT=0");
+    }
 
     let app = Router::new()
         .route("/health", get(health_handler))
