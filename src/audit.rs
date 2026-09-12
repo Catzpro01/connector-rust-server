@@ -52,8 +52,8 @@ impl AuditManager {
             project: project.to_string(),
             prompt: prompt.to_string(),
             output_snippet: output.map(|o| {
-                if o.len() > 100 {
-                    format!("{}...", &o[..100])
+                if o.len() > 200 {
+                    format!("{}...", &o[..200])
                 } else {
                     o.to_string()
                 }
@@ -61,7 +61,7 @@ impl AuditManager {
         };
 
         self.records.push(record);
-        if self.records.len() > 200 {
+        if self.records.len() > 10000 {
             self.records.remove(0);
         }
         self.save();

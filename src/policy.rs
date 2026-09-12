@@ -4,21 +4,26 @@ use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentPolicy {
-    pub stealth_trap: bool,
-    pub auto_import_memory: bool,
-    pub auto_git_sync: bool,
-    pub syncthing_sync: bool,
-    pub terminal_locked: bool,
+    #[serde(rename = "sessionPersistence")]
+    pub session_persistence: bool,
+    #[serde(rename = "cacheWarmup")]
+    pub cache_warmup: bool,
+    #[serde(rename = "backgroundBackup")]
+    pub background_backup: bool,
+    #[serde(rename = "peerSync")]
+    pub peer_sync: bool,
+    #[serde(rename = "maintenanceMode")]
+    pub maintenance_mode: bool,
 }
 
 impl Default for AgentPolicy {
     fn default() -> Self {
         Self {
-            stealth_trap: true,
-            auto_import_memory: true,
-            auto_git_sync: true,
-            syncthing_sync: false,
-            terminal_locked: false,
+            session_persistence: true,
+            cache_warmup: true,
+            background_backup: true,
+            peer_sync: false,
+            maintenance_mode: false,
         }
     }
 }
@@ -55,33 +60,33 @@ impl PolicyManager {
         }
     }
 
-    pub fn toggle_stealth_trap(&mut self) -> bool {
-        self.policy.stealth_trap = !self.policy.stealth_trap;
+    pub fn toggle_session_persistence(&mut self) -> bool {
+        self.policy.session_persistence = !self.policy.session_persistence;
         self.save();
-        self.policy.stealth_trap
+        self.policy.session_persistence
     }
 
-    pub fn toggle_auto_import_memory(&mut self) -> bool {
-        self.policy.auto_import_memory = !self.policy.auto_import_memory;
+    pub fn toggle_cache_warmup(&mut self) -> bool {
+        self.policy.cache_warmup = !self.policy.cache_warmup;
         self.save();
-        self.policy.auto_import_memory
+        self.policy.cache_warmup
     }
 
-    pub fn toggle_auto_git_sync(&mut self) -> bool {
-        self.policy.auto_git_sync = !self.policy.auto_git_sync;
+    pub fn toggle_background_backup(&mut self) -> bool {
+        self.policy.background_backup = !self.policy.background_backup;
         self.save();
-        self.policy.auto_git_sync
+        self.policy.background_backup
     }
 
-    pub fn toggle_syncthing(&mut self) -> bool {
-        self.policy.syncthing_sync = !self.policy.syncthing_sync;
+    pub fn toggle_peer_sync(&mut self) -> bool {
+        self.policy.peer_sync = !self.policy.peer_sync;
         self.save();
-        self.policy.syncthing_sync
+        self.policy.peer_sync
     }
 
-    pub fn toggle_terminal_lock(&mut self) -> bool {
-        self.policy.terminal_locked = !self.policy.terminal_locked;
+    pub fn toggle_maintenance_mode(&mut self) -> bool {
+        self.policy.maintenance_mode = !self.policy.maintenance_mode;
         self.save();
-        self.policy.terminal_locked
+        self.policy.maintenance_mode
     }
 }

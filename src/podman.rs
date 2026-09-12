@@ -51,7 +51,7 @@ impl PodmanManager {
             let s = String::from_utf8_lossy(&out.stdout);
             let count = s.lines().filter(|l| !l.trim().is_empty()).count();
             if count > 0 {
-                return format!("⚠️ Belum Disimpan ({} file) — /simpan_{}", count, slug);
+                return format!("⚠️ Belum Disimpan ({} file)", count);
             }
         }
 
@@ -63,7 +63,7 @@ impl PodmanManager {
             let count_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if let Ok(c) = count_str.parse::<usize>() {
                 if c > 0 {
-                    return format!("⚠️ Belum Di-push ({} commit) — /simpan_{}", c, slug);
+                    return format!("⚠️ Belum Di-push ({} commit)", c);
                 }
             }
         }
@@ -87,7 +87,7 @@ impl PodmanManager {
                 &work_dir,
                 "commit",
                 "-m",
-                "chore: update workspace snapshot via Telegram (/simpan)",
+                "chore: update workspace snapshot",
             ])
             .output();
 
@@ -134,7 +134,6 @@ impl PodmanManager {
             if let Some(first) = s.split('\t').next() {
                 if let Ok(kb) = first.trim().parse::<u64>() {
                     let mb = (kb as f64) / 1024.0;
-                    // assume standard 50GB VPS disk
                     let total_mb = 50.0 * 1024.0;
                     let pct = (mb / total_mb) * 100.0;
                     let usage = if mb >= 1.0 {
@@ -272,6 +271,140 @@ impl PodmanManager {
             Ok(o) if o.status.success() => Ok(format!("Kontainer '{}' berhasil dihapus.", slug)),
             Ok(o) => Err(String::from_utf8_lossy(&o.stderr).to_string()),
             Err(e) => Err(e.to_string()),
+        }
+    }
+
+    pub fn create_project_container(slug: &str) -> Result<String, String> {
+        let work_dir = format!("/var/lib/connector/projects/{}/work", slug);
+        let tasks_dir = format!("{}/.connector-tasks", work_dir);
+        let _ = std::fs::create_dir_all(&work_dir);
+        let _ = std::fs::create_dir_all(&tasks_dir);
+
+        // Stealth git exclude: tulis ke .git/info/exclude agar TIDAK memodifikasi .gitignore repo
+        let git_exclude_dir = format!("{}/.git/info", work_dir);
+        if Path::new(&git_exclude_dir).exists() {
+            let exclude_file = format!("{}/exclude", git_exclude_dir);
+            let stealth_content = "\n.connector/\n.connector-tasks/\n.session/\nnode_modules/\n";
+            if let Ok(existing) = std::fs::read_to_string(&exclude_file) {
+                if !existing.contains(".connector-tasks/") {
+                    let _ = std::fs::write(&exclude_file, format!("{}\n{}", existing.trim_end(), stealth_content));
+                }
+            } else {
+                let _ = std::fs::write(&exclude_file, stealth_content.trim_start());
+            }
+        }
+
+        let name = format!("connector-{}", slug);
+        let hostname = format!("srv-{}", slug);
+        let _ = Command::new("podman").args(["rm", "-f", &name]).output();
+
+        let res = Command::new("podman")
+            .args([
+                "run",
+                "-d",
+                "--name",
+                &name,
+                "--hostname",
+                &hostname,
+                "--shm-size",
+                "2g",
+                "--ulimit",
+                "nofile=4096:4096",
+                "-e",
+                "TERM=xterm-256color",
+                "-v",
+                &format!("{}:/work", work_dir),
+                "-w",
+                "/work",
+                "ubuntu:24.04",
+                "sleep",
+                "infinity",
+            ])
+            .output();
+
+        match res {
+            Ok(o) if o.status.success() => {
+                // Setup natural git config, shell history, dan hapus trigger containerenv
+                let _ = Command::new("podman")
+                    .args(["exec", &name, "git", "config", "--global", "user.name", "developer"])
+                    .output();
+                let _ = Command::new("podman")
+                    .args(["exec", &name, "git", "config", "--global", "user.email", "dev@users.noreply.github.com"])
+                    .output();
+                let _ = Command::new("podman")
+                    .args(["exec", &name, "touch", "/root/.bash_history"])
+                    .output();
+                let _ = Command::new("podman")
+                    .args(["exec", &name, "rm", "-f", "/run/.containerenv", "/.dockerenv"])
+                    .output();
+
+                Ok(format!("Kontainer '{}' berhasil dibuat & aktif.", name))
+            }
+            Ok(o) => Err(String::from_utf8_lossy(&o.stderr).to_string()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    pub fn exec_in_container(slug: &str, cmd: &str, cwd: Option<&str>) -> (bool, Option<i32>, String, String) {
+        let name = format!("connector-{}", slug);
+        let mut command = Command::new("podman");
+        command.arg("exec");
+        command.arg("-e").arg("TERM=xterm-256color");
+        if let Some(dir) = cwd {
+            command.arg("-w").arg(dir);
+        }
+        command.arg(&name).arg("bash").arg("-c").arg(cmd);
+
+        match command.output() {
+            Ok(o) => {
+                let stdout = String::from_utf8_lossy(&o.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&o.stderr).to_string();
+
+                // Append successful command to container's .bash_history for realism
+                if o.status.success() && !cmd.trim().is_empty() {
+                    let escaped = cmd.replace("'", "'\\''");
+                    let history_cmd = format!("echo '{}' >> /root/.bash_history", escaped);
+                    let _ = Command::new("podman")
+                        .args(["exec", &name, "sh", "-c", &history_cmd])
+                        .output();
+                }
+
+                (o.status.success(), o.status.code(), stdout, stderr)
+            }
+            Err(e) => (false, Some(1), String::new(), e.to_string()),
+        }
+    }
+
+    pub fn exec_background_in_container(slug: &str, cmd: &str, task_id: &str) -> Result<String, String> {
+        let work_dir = format!("/var/lib/connector/projects/{}/work", slug);
+        let tasks_dir = format!("{}/.connector-tasks", work_dir);
+        let _ = std::fs::create_dir_all(&tasks_dir);
+
+        let container_log_file = format!("/work/.connector-tasks/{}.log", task_id);
+        let name = format!("connector-{}", slug);
+        let shell_cmd = format!("nohup bash -c \"{}\" > {} 2>&1 & echo $!", cmd, container_log_file);
+
+        let res = Command::new("podman")
+            .args(["exec", "-d", "-e", "TERM=xterm-256color", &name, "bash", "-c", &shell_cmd])
+            .output();
+
+        match res {
+            Ok(o) if o.status.success() => Ok(task_id.to_string()),
+            Ok(o) => Err(String::from_utf8_lossy(&o.stderr).to_string()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    pub fn get_container_latency(slug: &str) -> u64 {
+        let start = std::time::Instant::now();
+        let name = format!("connector-{}", slug);
+        let res = Command::new("podman")
+            .args(["exec", &name, "echo", "ping"])
+            .output();
+
+        match res {
+            Ok(_) => start.elapsed().as_millis() as u64,
+            Err(_) => 999,
         }
     }
 }
