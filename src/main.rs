@@ -1,11 +1,14 @@
+mod audit;
 mod cost_tracker;
 mod evolution;
 mod heritage;
 mod linter;
 mod podman;
+mod policy;
 mod swarming;
 mod telegram;
 
+use audit::AuditManager;
 use axum::{
     extract::{Json, State},
     routing::{get, post},
@@ -15,6 +18,7 @@ use cost_tracker::TokenCostTracker;
 use evolution::SelfEvolutionEngine;
 use heritage::HeritageMemoryGraph;
 use linter::MattPocockLinter;
+use policy::PolicyManager;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -28,6 +32,8 @@ struct AppState {
     heritage: Arc<Mutex<HeritageMemoryGraph>>,
     evolution: Arc<Mutex<SelfEvolutionEngine>>,
     swarming: Arc<Mutex<ZeroCollisionSwarming>>,
+    policy: Arc<Mutex<PolicyManager>>,
+    audit: Arc<Mutex<AuditManager>>,
 }
 
 #[derive(Serialize)]
@@ -69,12 +75,16 @@ async fn main() {
     let heritage = Arc::new(Mutex::new(HeritageMemoryGraph::new(&data_dir)));
     let evolution = Arc::new(Mutex::new(SelfEvolutionEngine::new(&data_dir)));
     let swarming = Arc::new(Mutex::new(ZeroCollisionSwarming::new()));
+    let policy = Arc::new(Mutex::new(PolicyManager::new(&data_dir)));
+    let audit = Arc::new(Mutex::new(AuditManager::new(&data_dir)));
 
     let state = AppState {
         cost_tracker: Arc::clone(&cost_tracker),
         heritage: Arc::clone(&heritage),
         evolution: Arc::clone(&evolution),
         swarming: Arc::clone(&swarming),
+        policy: Arc::clone(&policy),
+        audit: Arc::clone(&audit),
     };
 
     // Initialize Telegram bot if enabled
@@ -83,7 +93,13 @@ async fn main() {
         let token = std::env::var("TELEGRAM_BOT_TOKEN")
             .unwrap_or_else(|_| "8696129901:AAGu_jCm3YOworkFTSZ7xq_zO5JFl9_tZ3U".to_string());
 
-        let bot = TelegramAdminBot::new(&token, Arc::clone(&cost_tracker), Arc::clone(&heritage));
+        let bot = TelegramAdminBot::new(
+            &token,
+            Arc::clone(&cost_tracker),
+            Arc::clone(&heritage),
+            Arc::clone(&policy),
+            Arc::clone(&audit),
+        );
         bot.set_admin_chat_id(5602465864);
 
         tokio::spawn(async move {
@@ -106,7 +122,7 @@ async fn main() {
     let port: u16 = std::env::var("PORT")
         .ok()
         .and_then(|p| p.parse().ok())
-        .unwrap_or(3211);
+        .unwrap_or(3210);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     println!("[connector-rs] Listening on http://{} (Native Rust Standalone)", addr);
@@ -122,7 +138,7 @@ async fn health_handler(State(state): State<AppState>) -> Json<HealthResponse> {
         engine: "rust-native-standalone",
         version: "0.1.0",
         active_skills: evo.list_skills().len(),
-        memory_mb: 8.5, // Native footprint
+        memory_mb: 8.5,
     })
 }
 
@@ -135,16 +151,19 @@ async fn acquire_lock_handler(
     State(state): State<AppState>,
     Json(req): Json<LockRequest>,
 ) -> Json<serde_json::Value> {
-    let mut sw = state.swarming.lock().await;
-    match sw.acquire_lock(&req.project, &req.file_path, &req.agent, req.lease_minutes.unwrap_or(10)) {
-        Ok(msg) => Json(serde_json::json!({ "success": true, "message": msg })),
-        Err(err) => Json(serde_json::json!({ "success": false, "error": err })),
-    }
+    let mut swarming = state.swarming.lock().await;
+    let success = swarming.acquire_lock(&req.project, &req.file_path, &req.agent, req.lease_minutes);
+    Json(serde_json::json!({
+        "success": success,
+        "project": req.project,
+        "file_path": req.file_path,
+        "agent": req.agent,
+    }))
 }
 
 async fn list_locks_handler(State(state): State<AppState>) -> Json<Vec<swarming::FileLock>> {
-    let sw = state.swarming.lock().await;
-    Json(sw.list_active_locks(None))
+    let swarming = state.swarming.lock().await;
+    Json(swarming.list_active_locks())
 }
 
 async fn synthesize_handler(
@@ -152,8 +171,8 @@ async fn synthesize_handler(
     Json(req): Json<SynthesizeRequest>,
 ) -> Json<serde_json::Value> {
     let mut evo = state.evolution.lock().await;
-    let interpreter = req.interpreter.as_deref().unwrap_or("sh");
-    match evo.synthesize_script_tool(&req.name, &req.description, &req.script, interpreter) {
+    let res = evo.synthesize_skill(&req.name, &req.description, &req.script, req.interpreter.as_deref());
+    match res {
         Ok(skill) => Json(serde_json::json!({ "success": true, "skill": skill })),
         Err(err) => Json(serde_json::json!({ "success": false, "error": err })),
     }
@@ -161,15 +180,10 @@ async fn synthesize_handler(
 
 async fn list_skills_handler(State(state): State<AppState>) -> Json<Vec<evolution::SynthesizedSkill>> {
     let evo = state.evolution.lock().await;
-    Json(evo.list_skills().to_vec())
+    Json(evo.list_skills())
 }
 
-async fn lint_handler(Json(req): Json<LintRequest>) -> Json<serde_json::Value> {
-    let violations = MattPocockLinter::scan_ts_code(&req.code);
-    let compliant = violations.is_empty();
-    Json(serde_json::json!({
-        "compliant": compliant,
-        "violation_count": violations.len(),
-        "violations": violations
-    }))
+async fn lint_handler(Json(req): Json<LintRequest>) -> Json<linter::LintReport> {
+    let report = MattPocockLinter::lint(&req.code);
+    Json(report)
 }

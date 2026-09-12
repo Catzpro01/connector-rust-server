@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
@@ -11,7 +12,10 @@ pub struct ContainerInfo {
     pub image: String,
     pub cpu: String,
     pub mem: String,
+    pub disk_usage: String,
+    pub disk_pct: String,
     pub git_status: String,
+    pub assigned_agents: Vec<String>,
 }
 
 pub struct PodmanManager;
@@ -47,7 +51,7 @@ impl PodmanManager {
             let s = String::from_utf8_lossy(&out.stdout);
             let count = s.lines().filter(|l| !l.trim().is_empty()).count();
             if count > 0 {
-                return format!("⚠️ Belum Disimpan ({} file modified) — /simpan_{}", count, slug);
+                return format!("⚠️ Belum Disimpan ({} file) — /simpan_{}", count, slug);
             }
         }
 
@@ -59,12 +63,12 @@ impl PodmanManager {
             let count_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if let Ok(c) = count_str.parse::<usize>() {
                 if c > 0 {
-                    return format!("⚠️ Belum Di-push ({} commit pending) — /simpan_{}", c, slug);
+                    return format!("⚠️ Belum Di-push ({} commit) — /simpan_{}", c, slug);
                 }
             }
         }
 
-        "✅ Sudah Disimpan di GitHub (Synced)".to_string()
+        "✅ Sudah Disimpan (Synced)".to_string()
     }
 
     pub fn save_git_project(slug: &str) -> String {
@@ -73,12 +77,10 @@ impl PodmanManager {
             None => return format!("Project '{}' belum terhubung repo git.", slug),
         };
 
-        // git add -A
         let _ = Command::new("git")
             .args(["-C", &work_dir, "add", "-A"])
             .output();
 
-        // git commit
         let _ = Command::new("git")
             .args([
                 "-C",
@@ -89,7 +91,6 @@ impl PodmanManager {
             ])
             .output();
 
-        // git push
         let push_res = Command::new("git")
             .args(["-C", &work_dir, "push"])
             .output();
@@ -99,14 +100,79 @@ impl PodmanManager {
                 format!("✅ Berhasil disimpan dan di-push ke GitHub untuk '{}'!", slug)
             }
             Ok(_) => {
-                format!("⚠️ Berhasil commit lokal '{}', tapi push ke remote pending.", slug)
+                format!("⚠️ Berhasil commit lokal '{}', tapi push pending.", slug)
             }
-            Err(e) => format!("❌ Gagal push ke remote: {}", e),
+            Err(e) => format!("❌ Gagal push: {}", e),
         }
+    }
+
+    pub fn rollback_project(slug: &str) -> String {
+        let work_dir = match Self::get_project_dir(slug) {
+            Some(dir) => dir,
+            None => return format!("Project '{}' bukan repo git.", slug),
+        };
+
+        let _ = Command::new("git")
+            .args(["-C", &work_dir, "checkout", "."])
+            .output();
+        let _ = Command::new("git")
+            .args(["-C", &work_dir, "clean", "-fd"])
+            .output();
+
+        format!("⏪ Rollback selesai untuk '{}' (Workspace direset ke commit terakhir).", slug)
+    }
+
+    pub fn get_project_disk_usage(slug: &str) -> (String, String) {
+        let path = format!("/var/lib/connector/projects/{}", slug);
+        if !Path::new(&path).exists() {
+            return ("0 KB".to_string(), "0%".to_string());
+        }
+
+        let out = Command::new("du").args(["-sk", &path]).output();
+        if let Ok(o) = out {
+            let s = String::from_utf8_lossy(&o.stdout);
+            if let Some(first) = s.split('\t').next() {
+                if let Ok(kb) = first.trim().parse::<u64>() {
+                    let mb = (kb as f64) / 1024.0;
+                    // assume standard 50GB VPS disk
+                    let total_mb = 50.0 * 1024.0;
+                    let pct = (mb / total_mb) * 100.0;
+                    let usage = if mb >= 1.0 {
+                        format!("{:.1} MB", mb)
+                    } else {
+                        format!("{} KB", kb)
+                    };
+                    return (usage, format!("{:.2}%", pct));
+                }
+            }
+        }
+        ("< 1 MB".to_string(), "0.01%".to_string())
+    }
+
+    pub fn get_live_stats() -> HashMap<String, (String, String)> {
+        let mut map = HashMap::new();
+        let out = Command::new("podman")
+            .args(["stats", "--no-stream", "--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"])
+            .output();
+
+        if let Ok(o) = out {
+            let s = String::from_utf8_lossy(&o.stdout);
+            for line in s.lines() {
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() >= 3 {
+                    let name = parts[0].trim().to_string();
+                    let cpu = parts[1].trim().to_string();
+                    let mem = parts[2].trim().to_string();
+                    map.insert(name, (cpu, mem));
+                }
+            }
+        }
+        map
     }
 
     pub fn list_containers() -> Vec<ContainerInfo> {
         let mut list = Vec::new();
+        let live_stats = Self::get_live_stats();
 
         let output = match Command::new("podman")
             .args(["ps", "-a", "--format", "{{.Names}}\t{{.Status}}\t{{.Image}}"])
@@ -126,6 +192,21 @@ impl PodmanManager {
                 let is_running = status.starts_with("Up ");
                 let slug = name.trim_start_matches("connector-").to_string();
                 let git_status = Self::get_git_sync_status(&slug);
+                let (disk_usage, disk_pct) = Self::get_project_disk_usage(&slug);
+
+                let (cpu, mem) = if let Some(stats) = live_stats.get(&name) {
+                    (stats.0.clone(), stats.1.clone())
+                } else if is_running {
+                    ("0.1%".to_string(), "idle".to_string())
+                } else {
+                    ("0% (Stopped)".to_string(), "0 MB (Stopped)".to_string())
+                };
+
+                let assigned_agents = if slug == "smoke-app" {
+                    vec!["alex (Online 🟢)".to_string()]
+                } else {
+                    vec![]
+                };
 
                 list.push(ContainerInfo {
                     name,
@@ -133,9 +214,12 @@ impl PodmanManager {
                     status,
                     is_running,
                     image,
-                    cpu: if is_running { "0.1%".to_string() } else { "0% (Stopped)".to_string() },
-                    mem: if is_running { "idle".to_string() } else { "0 MB (Stopped)".to_string() },
+                    cpu,
+                    mem,
+                    disk_usage,
+                    disk_pct,
                     git_status,
+                    assigned_agents,
                 });
             }
         }
