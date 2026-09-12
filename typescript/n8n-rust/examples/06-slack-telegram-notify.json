@@ -1,0 +1,19 @@
+{
+  "name": "06 - Slack + Telegram Notify (extended nodes)",
+  "description": "Contoh extended nodes — Slack, Telegram, Discord — 27 extended nodes",
+  "nodes": [
+    {"parameters": {}, "id": "1", "name": "Manual Trigger", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0]},
+    {"parameters": {"assignments": {"assignments": [{"name": "message", "value": "Deployment sukses 🚀"}, {"name": "channel", "value": "#general"}]}}, "id": "2", "name": "Set Message", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [300, 0]},
+    {"parameters": {"channel": "={{ $json.channel }}", "text": "={{ $json.message }}", "username": "n8n-rust"}, "id": "3", "name": "Slack", "type": "n8n-nodes-base.slack", "typeVersion": 1, "position": [600, -100]},
+    {"parameters": {"chatId": "123456", "text": "={{ $json.message }} - {{ $now }}"}, "id": "4", "name": "Telegram", "type": "n8n-nodes-base.telegram", "typeVersion": 1, "position": [600, 100]},
+    {"parameters": {"mode": "append"}, "id": "5", "name": "Merge", "type": "n8n-nodes-base.merge", "typeVersion": 1, "position": [900, 0]}
+  ],
+  "connections": {
+    "Manual Trigger": {"main": [[{"node": "Set Message"}]]},
+    "Set Message": {"main": [[{"node": "Slack", "type": "main", "index": 0}, {"node": "Telegram", "type": "main", "index": 0}]]},
+    "Slack": {"main": [[{"node": "Merge"}]]},
+    "Telegram": {"main": [[{"node": "Merge"}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"}
+}

@@ -1,0 +1,10 @@
+[package]
+name = "n8n-cli"
+version = "0.8.0"
+edition = "2021"
+
+[dependencies]
+n8n-core = { path = "../n8n-core" }
+n8n-engine = { path = "../n8n-engine" }
+n8n-nodes = { path = "../n8n-nodes" }
+serde_json = "1"

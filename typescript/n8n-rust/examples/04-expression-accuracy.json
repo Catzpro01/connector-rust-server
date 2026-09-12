@@ -1,0 +1,53 @@
+{
+  "name": "04 - Expression Accuracy 99%",
+  "description": "Test semua expression yang 99% sama dengan n8n asli",
+  "nodes": [
+    {"parameters": {}, "id": "1", "name": "Manual Trigger", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0]},
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {"name": "name", "value": "udi"},
+            {"name": "age", "value": 20},
+            {"name": "tags", "value": ["a", "b", "a"]},
+            {"name": "price", "value": 3.7}
+          ]
+        }
+      },
+      "id": "2",
+      "name": "Set Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [300, 0]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {"name": "upper", "value": "={{ $json.name.toUpperCase() }}"},
+            {"name": "isAdult", "value": "={{ $json.age > 18 }}"},
+            {"name": "firstTag", "value": "={{ $json.tags.first() }}"},
+            {"name": "uniqueTags", "value": "={{ $json.tags.unique() }}"},
+            {"name": "tagCount", "value": "={{ $json.tags.length }}"},
+            {"name": "adultOrMinor", "value": "={{ $if($json.age > 18, \"adult\", \"minor\") }}"},
+            {"name": "floored", "value": "={{ Math.floor($json.price) }}"},
+            {"name": "workflowName", "value": "={{ $workflow.name }}"},
+            {"name": "execId", "value": "={{ $execution.id }}"},
+            {"name": "now", "value": "={{ $now }}"}
+          ]
+        }
+      },
+      "id": "3",
+      "name": "Set Expressions",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [600, 0]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {"main": [[{"node": "Set Data"}]]},
+    "Set Data": {"main": [[{"node": "Set Expressions"}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"}
+}

@@ -1,0 +1,20 @@
+[package]
+name = "kernel"
+description = "Shared contracts for the workflow engine. Pure types + traits, no policy."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# KERNEL FREEZE RULE (D115 / audit A-05):
+# This crate MUST NOT depend on any internal crate, and MUST stay dependency-light.
+# Allowed: serde, serde_json, async-trait, thiserror. Nothing else without an ADR.
+# Deliberately absent: tokio, reqwest, sqlx, axum, any JS engine, chrono/time.
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

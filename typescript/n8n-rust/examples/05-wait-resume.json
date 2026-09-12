@@ -1,0 +1,15 @@
+{
+  "name": "05 - Wait + Resume (n8n asli pattern)",
+  "description": "Contoh wait resume — POST /api/wait/resume/{executionId} untuk lanjutkan",
+  "nodes": [
+    {"parameters": {}, "id": "1", "name": "Manual Trigger", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0]},
+    {"parameters": {"amount": 1, "unit": "seconds"}, "id": "2", "name": "Wait", "type": "n8n-nodes-base.wait", "typeVersion": 1, "position": [300, 0]},
+    {"parameters": {"assignments": {"assignments": [{"name": "status", "value": "resumed"}, {"name": "afterWait", "value": "={{ $now }}"}]}}, "id": "3", "name": "Set After Wait", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [600, 0]}
+  ],
+  "connections": {
+    "Manual Trigger": {"main": [[{"node": "Wait"}]]},
+    "Wait": {"main": [[{"node": "Set After Wait"}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"}
+}

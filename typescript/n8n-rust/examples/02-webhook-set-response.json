@@ -1,0 +1,40 @@
+{
+  "name": "02 - Webhook + Set + Respond (API)",
+  "description": "Contoh webhook GET dengan query param, responseMode lastNode — 99% sama dengan n8n asli",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "demo",
+        "httpMethod": "GET",
+        "responseMode": "lastNode",
+        "responseData": "firstEntryJson"
+      },
+      "id": "w1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {"name": "tag", "value": "={{ $json.query.tag }}"},
+            {"name": "method", "value": "={{ $json.method }}"},
+            {"name": "timestamp", "value": "={{ $now }}"}
+          ]
+        }
+      },
+      "id": "s1",
+      "name": "Set",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {"main": [[{"node": "Set", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"}
+}

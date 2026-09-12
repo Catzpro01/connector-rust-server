@@ -1,0 +1,27 @@
+# Security: Private keys & credentials
+*_id_ed25519*
+id_*
+*.pem
+*.key
+*.token
+*.env
+.env*
+!.env.example
+
+# Build artifacts & caches
+target/
+Cargo.lock.bak
+*.log
+.DS_Store
+Thumbs.db
+
+# n8n-rust v1 frontend (bila Opsi A diputuskan)
+n8n-rust/web/node_modules/
+n8n-rust/web/dist/
+
+# Ralph loop state (machine-local, jangan di-commit)
+.ralph-loop.local.md
+# persistence data (workflows, credentials, executions, hooks)
+data/
+n8n-rust/crates/n8n-server/data/
+n8n-rust/data/

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "multitasking-tabs": {
+      "command": "connector-cli",
+      "args": ["mcp"]
+    },
+    "connector": {
+      "type": "http",
+      "url": "http://103.55.37.234:3210/mcp"
+    }
+  }
+}

@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+# Diperbaiki 2026-09-09 (matt, instruksi fern #513, temuan #434).
+# Sebelumnya mendeklarasikan 4 member, tapi:
+#   crates/testkit     -> tidak pernah ada (git ls-tree d3bcff0 confirms)
+#   crates/nodes-core  -> tidak pernah ada
+#   crates/data-plane  -> Cargo.toml ada, 0 file .rs -> "no targets specified"
+# Akibatnya `cargo metadata` gagal exit 101 SEBELUM kompilasi apa pun, sehingga
+# klaim "19/19 test hijau" di commit d3bcff0 tidak dapat direproduksi.
+# Member dikembalikan lagi begitu crate-nya benar-benar punya src/lib.rs.
+members = [
+    "crates/kernel",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "Apache-2.0"
+repository = "https://example.invalid/TBD-rename-before-publish"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"
+thiserror = "2"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

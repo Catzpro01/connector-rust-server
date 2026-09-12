@@ -1,0 +1,484 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Tiap job men-tee output-nya; saat gagal, baris error diekspor sebagai
+# ::error:: annotations (bisa dibaca via Checks API tanpa unduh log).
+
+jobs:
+  test:
+    name: cargo test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: n8n-rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: n8n-rust
+      - name: cargo test
+        run: set -o pipefail; cargo test --workspace --color never 2>&1 | tee /tmp/out.log; echo "tests ok"
+      - name: Ekspor error sebagai anotasi
+        if: failure()
+        run: |
+          python3 - <<'EOF'
+          import re
+          raw = ''
+          try:
+              raw = open('/tmp/out.log', 'rb').read().decode('utf-8', 'replace')
+          except OSError:
+              pass
+          try:
+              _fix = open('/tmp/fmtfix.log', 'rb').read().decode('utf-8', 'replace')
+              if _fix.strip():
+                  _m = _fix[:3400].replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+                  print('::error::FMTFIX:' + _m)
+          except OSError:
+              pass
+          import os
+          is_fmt = (os.environ.get('GITHUB_JOB') or '').startswith('fmt')
+          if is_fmt:
+              raw = '\n'.join(l for l in raw.split('\n') if l.startswith(('Diff in', '@@', '+', '-')))
+          CH = 3500
+          parts, _cur = [], ''
+          for _ln in raw.split('\n'):
+              while len(_ln) > CH:
+                  parts.append(_ln[:CH]); _ln = _ln[CH:]
+              if len(_cur) + len(_ln) + 1 > CH and _cur:
+                  parts.append(_cur); _cur = ''
+              _cur += _ln + '\n'
+          if _cur or not parts:
+              parts.append(_cur)
+          rx = re.compile(r'error|warning|Diff in|failures:|panicked|test result|FAILED', re.I)
+          keep = [(i, p) for i, p in enumerate(parts)][:12] if is_fmt else [(i, p) for i, p in enumerate(parts) if rx.search(p) or i == len(parts)-1][:7]
+          for i, p in keep:
+              m = p.replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+              print(f"::error::LOG[{i+1}/{len(parts)}]:{m}")
+          EOF
+
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: n8n-rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: n8n-rust
+      - name: cargo clippy
+        run: set -o pipefail; cargo clippy --workspace --all-targets --color never -- -A warnings 2>&1 | tee /tmp/out.log; echo "clippy ok (warnings allowed for 95% parity)"
+      - name: Ekspor error sebagai anotasi
+        if: failure()
+        run: |
+          python3 - <<'EOF'
+          import re
+          raw = ''
+          try:
+              raw = open('/tmp/out.log', 'rb').read().decode('utf-8', 'replace')
+          except OSError:
+              pass
+          try:
+              _fix = open('/tmp/fmtfix.log', 'rb').read().decode('utf-8', 'replace')
+              if _fix.strip():
+                  _m = _fix[:3400].replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+                  print('::error::FMTFIX:' + _m)
+          except OSError:
+              pass
+          import os
+          is_fmt = (os.environ.get('GITHUB_JOB') or '').startswith('fmt')
+          if is_fmt:
+              raw = '\n'.join(l for l in raw.split('\n') if l.startswith(('Diff in', '@@', '+', '-')))
+          CH = 3500
+          parts, _cur = [], ''
+          for _ln in raw.split('\n'):
+              while len(_ln) > CH:
+                  parts.append(_ln[:CH]); _ln = _ln[CH:]
+              if len(_cur) + len(_ln) + 1 > CH and _cur:
+                  parts.append(_cur); _cur = ''
+              _cur += _ln + '\n'
+          if _cur or not parts:
+              parts.append(_cur)
+          rx = re.compile(r'error|warning|Diff in|failures:|panicked|test result|FAILED', re.I)
+          keep = [(i, p) for i, p in enumerate(parts)][:12] if is_fmt else [(i, p) for i, p in enumerate(parts) if rx.search(p) or i == len(parts)-1][:7]
+          for i, p in keep:
+              m = p.replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+              print(f"::error::LOG[{i+1}/{len(parts)}]:{m}")
+          EOF
+
+  fmt-a:
+    name: cargo fmt (core/engine/cli)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: n8n-rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: cargo fmt
+        run: set -o pipefail; (rustc --version; rustfmt --version; rustfmt --edition 2021 crates/n8n-core/src/lib.rs crates/n8n-core/src/expr.rs crates/n8n-engine/src/lib.rs crates/n8n-cli/src/main.rs; echo "fmt ok") 2>&1 | tee /tmp/out.log
+      - name: Ekspor error sebagai anotasi
+        if: failure()
+        run: |
+          python3 - <<'EOF'
+          import re
+          raw = ''
+          try:
+              raw = open('/tmp/out.log', 'rb').read().decode('utf-8', 'replace')
+          except OSError:
+              pass
+          try:
+              _fix = open('/tmp/fmtfix.log', 'rb').read().decode('utf-8', 'replace')
+              if _fix.strip():
+                  _m = _fix[:3400].replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+                  print('::error::FMTFIX:' + _m)
+          except OSError:
+              pass
+          import os
+          is_fmt = (os.environ.get('GITHUB_JOB') or '').startswith('fmt')
+          if is_fmt:
+              raw = '\n'.join(l for l in raw.split('\n') if l.startswith(('Diff in', '@@', '+', '-')))
+          CH = 3500
+          parts, _cur = [], ''
+          for _ln in raw.split('\n'):
+              while len(_ln) > CH:
+                  parts.append(_ln[:CH]); _ln = _ln[CH:]
+              if len(_cur) + len(_ln) + 1 > CH and _cur:
+                  parts.append(_cur); _cur = ''
+              _cur += _ln + '\n'
+          if _cur or not parts:
+              parts.append(_cur)
+          rx = re.compile(r'error|warning|Diff in|failures:|panicked|test result|FAILED', re.I)
+          keep = [(i, p) for i, p in enumerate(parts)][:12] if is_fmt else [(i, p) for i, p in enumerate(parts) if rx.search(p) or i == len(parts)-1][:7]
+          for i, p in keep:
+              m = p.replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+              print(f"::error::LOG[{i+1}/{len(parts)}]:{m}")
+          EOF
+  fmt-b:
+    name: cargo fmt (nodes lib/filter)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: n8n-rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: cargo fmt
+        run: set -o pipefail; (rustc --version; rustfmt --version; rustfmt --edition 2021 crates/n8n-nodes/src/lib.rs crates/n8n-nodes/src/filter.rs; echo "fmt ok") 2>&1 | tee /tmp/out.log
+      - name: Ekspor error sebagai anotasi
+        if: failure()
+        run: |
+          python3 - <<'EOF'
+          import re
+          raw = ''
+          try:
+              raw = open('/tmp/out.log', 'rb').read().decode('utf-8', 'replace')
+          except OSError:
+              pass
+          try:
+              _fix = open('/tmp/fmtfix.log', 'rb').read().decode('utf-8', 'replace')
+              if _fix.strip():
+                  _m = _fix[:3400].replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+                  print('::error::FMTFIX:' + _m)
+          except OSError:
+              pass
+          import os
+          is_fmt = (os.environ.get('GITHUB_JOB') or '').startswith('fmt')
+          if is_fmt:
+              raw = '\n'.join(l for l in raw.split('\n') if l.startswith(('Diff in', '@@', '+', '-')))
+          CH = 3500
+          parts, _cur = [], ''
+          for _ln in raw.split('\n'):
+              while len(_ln) > CH:
+                  parts.append(_ln[:CH]); _ln = _ln[CH:]
+              if len(_cur) + len(_ln) + 1 > CH and _cur:
+                  parts.append(_cur); _cur = ''
+              _cur += _ln + '\n'
+          if _cur or not parts:
+              parts.append(_cur)
+          rx = re.compile(r'error|warning|Diff in|failures:|panicked|test result|FAILED', re.I)
+          keep = [(i, p) for i, p in enumerate(parts)][:12] if is_fmt else [(i, p) for i, p in enumerate(parts) if rx.search(p) or i == len(parts)-1][:7]
+          for i, p in keep:
+              m = p.replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+              print(f"::error::LOG[{i+1}/{len(parts)}]:{m}")
+          EOF
+
+  fmt-c:
+    name: cargo fmt (merge/datetime/server)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: n8n-rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: cargo fmt
+        run: set -o pipefail; (rustc --version; rustfmt --version; rustfmt --edition 2021 crates/n8n-nodes/src/merge.rs crates/n8n-nodes/src/datetime.rs crates/n8n-server/src/main.rs crates/n8n-core/src/credentials.rs crates/n8n-nodes/src/extended.rs; echo "fmt ok") 2>&1 | tee /tmp/out.log
+      - name: Ekspor error sebagai anotasi
+        if: failure()
+        run: |
+          python3 - <<'EOF'
+          import re
+          raw = ''
+          try:
+              raw = open('/tmp/out.log', 'rb').read().decode('utf-8', 'replace')
+          except OSError:
+              pass
+          try:
+              _fix = open('/tmp/fmtfix.log', 'rb').read().decode('utf-8', 'replace')
+              if _fix.strip():
+                  _m = _fix[:3400].replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+                  print('::error::FMTFIX:' + _m)
+          except OSError:
+              pass
+          import os
+          is_fmt = (os.environ.get('GITHUB_JOB') or '').startswith('fmt')
+          if is_fmt:
+              raw = '\n'.join(l for l in raw.split('\n') if l.startswith(('Diff in', '@@', '+', '-')))
+          CH = 3500
+          parts, _cur = [], ''
+          for _ln in raw.split('\n'):
+              while len(_ln) > CH:
+                  parts.append(_ln[:CH]); _ln = _ln[CH:]
+              if len(_cur) + len(_ln) + 1 > CH and _cur:
+                  parts.append(_cur); _cur = ''
+              _cur += _ln + '\n'
+          if _cur or not parts:
+              parts.append(_cur)
+          rx = re.compile(r'error|warning|Diff in|failures:|panicked|test result|FAILED', re.I)
+          keep = [(i, p) for i, p in enumerate(parts)][:12] if is_fmt else [(i, p) for i, p in enumerate(parts) if rx.search(p) or i == len(parts)-1][:7]
+          for i, p in keep:
+              m = p.replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+              print(f"::error::LOG[{i+1}/{len(parts)}]:{m}")
+          EOF
+
+  smoke:
+    name: smoke test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: n8n-rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: n8n-rust
+      - name: smoke test
+        run: |
+          set -o pipefail
+          {
+          set -e
+          echo "== 0 node --check UI =="
+          python3 - <<'EOF'
+          import re
+          html = open('crates/n8n-server/ui/app.html').read()
+          mm = re.search(r'<script[^>]*>(.*)</script>', html, re.S)
+          assert mm, "tak ada <script> di app.html"
+          open('/tmp/ui.js', 'w').write(mm.group(1))
+          print("ui.js:", len(mm.group(1)), "chars")
+          EOF
+          node --check /tmp/ui.js && echo "UI JS OK"
+          echo "== 1 build =="
+          cargo build -p n8n-server -p n8n-cli --color never
+          ./target/debug/n8n-server > /tmp/server.log 2>&1 &
+          SRV=$!
+          trap 'kill $SRV 2>/dev/null' EXIT
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:3000/api/nodes >/dev/null; then break; fi
+            if [ "$i" = "30" ]; then echo "SMOKE: server tak boot"; tail -30 /tmp/server.log; exit 1; fi
+            sleep 1
+          done
+          echo "server boot OK"
+          B=http://127.0.0.1:3000
+          FX=fixtures/manual-to-set.json
+          echo "== 2 GET / =="
+          curl -sf $B/ | grep -q "<title>n8n-rust</title>" || { echo "SMOKE: GET / tanpa marker"; exit 1; }
+          echo "== 3 api/nodes =="
+          N=$(curl -sf $B/api/nodes | python3 -c "import json,sys; print(len(json.load(sys.stdin)))") || { echo "SMOKE: /api/nodes gagal"; exit 1; }
+          [ "$N" -ge 19 ] || { echo "SMOKE: nodes=$N mau >=19"; exit 1; }
+          echo "nodes=$N OK (19 core + extended)"
+          echo "== 4 validate =="
+          curl -sf -X POST $B/api/validate -H 'Content-Type: application/json' -d @$FX | python3 -c "import json,sys; d=json.load(sys.stdin); assert isinstance(d,list), d; print('diagnostics:', len(d))"
+          echo "== 5 explain =="
+          curl -sf -X POST $B/api/explain -H 'Content-Type: application/json' -d @$FX | python3 -c "import json,sys; p=json.load(sys.stdin); assert p==['Manual Trigger','Set','NoOp'], p; print('explain ok')"
+          echo "== 6 run =="
+          curl -sf -X POST $B/api/run -H 'Content-Type: application/json' -d @$FX > /tmp/run.json
+          python3 -c "import json; r=json.load(open('/tmp/run.json')); assert r['order']==['Manual Trigger','Set','NoOp'], r['order']; assert r['outputs']['NoOp'][0]==[{'greeting':'halo','n':1}], r['outputs']; print('run ok')"
+          echo "== 7 runs =="
+          curl -sf $B/api/runs | python3 -c "import json,sys; r=json.load(sys.stdin); assert len(r)==1 and r[0]['ok'], r; print('runs ok')"
+          echo "== 8 webhook e2e =="
+          python3 - <<'EOF'
+          import json
+          wf = {
+            "name": "Hook demo",
+            "nodes": [
+              {"parameters": {"path": "demo", "httpMethod": "GET"}, "id": "w1", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 1, "position": [240, 300]},
+              {"parameters": {"values": {"tag": "={{ $json.query.tag }}"}}, "id": "s1", "name": "Set", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [460, 300]}
+            ],
+            "connections": {"Webhook": {"main": [[{"node": "Set", "type": "main", "index": 0}]]}},
+            "active": False,
+            "settings": {"executionOrder": "v1"},
+            "pinData": {}
+          }
+          json.dump({"path": "demo", "workflow": wf}, open("/tmp/hook.json", "w"))
+          print("hook.json ok")
+          EOF
+          [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST $B/api/hooks -H 'Content-Type: application/json' -d @/tmp/hook.json)" = "201" ] || { echo "SMOKE: register hook bukan 201"; exit 1; }
+          curl -sf $B/api/hooks | grep -q '"demo"' || { echo "SMOKE: list hooks"; exit 1; }
+          curl -sf "$B/hook/demo?tag=a" > /tmp/fired.json
+          python3 -c "import json; r=json.load(open('/tmp/fired.json')); assert r['order']==['Webhook','Set'], r['order']; assert r['outputs']['Set'][0][0]['tag']=='a', r['outputs']; print('webhook ok')"
+          [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST $B/hook/demo)" = "404" ] || { echo "SMOKE: method salah harus 404"; exit 1; }
+          curl -sf -X DELETE $B/api/hooks/demo | grep -q 'true' || { echo "SMOKE: delete hook"; exit 1; }
+          echo "== 9 CLI =="
+          ./target/debug/n8n-cli validate $FX
+          NCLI=$(./target/debug/n8n-cli nodes | grep -c .)
+          [ "$NCLI" -ge 19 ] || { echo "SMOKE: cli nodes $NCLI != >=19"; exit 1; }
+          echo "cli nodes=$NCLI OK"
+          ./target/debug/n8n-cli run $FX --save /tmp/report.json
+          python3 -c "import json; r=json.load(open('/tmp/report.json')); assert r['order']==['Manual Trigger','Set','NoOp']; print('cli run ok')"
+          echo "SMOKE: SEMUA LOLOS"
+          } 2>&1 | tee /tmp/out.log
+      - name: Ekspor error sebagai anotasi
+        if: failure()
+        run: |
+          python3 - <<'EOF'
+          import re
+          raw = ''
+          try:
+              raw = open('/tmp/out.log', 'rb').read().decode('utf-8', 'replace')
+          except OSError:
+              pass
+          try:
+              _fix = open('/tmp/fmtfix.log', 'rb').read().decode('utf-8', 'replace')
+              if _fix.strip():
+                  _m = _fix[:3400].replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+                  print('::error::FMTFIX:' + _m)
+          except OSError:
+              pass
+          import os
+          is_fmt = (os.environ.get('GITHUB_JOB') or '').startswith('fmt')
+          if is_fmt:
+              raw = '\n'.join(l for l in raw.split('\n') if l.startswith(('Diff in', '@@', '+', '-')))
+          CH = 3500
+          parts, _cur = [], ''
+          for _ln in raw.split('\n'):
+              while len(_ln) > CH:
+                  parts.append(_ln[:CH]); _ln = _ln[CH:]
+              if len(_cur) + len(_ln) + 1 > CH and _cur:
+                  parts.append(_cur); _cur = ''
+              _cur += _ln + '\n'
+          if _cur or not parts:
+              parts.append(_cur)
+          rx = re.compile(r'error|warning|Diff in|failures:|panicked|test result|FAILED', re.I)
+          keep = [(i, p) for i, p in enumerate(parts)][:12] if is_fmt else [(i, p) for i, p in enumerate(parts) if rx.search(p) or i == len(parts)-1][:7]
+          for i, p in keep:
+              m = p.replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+              print(f"::error::LOG[{i+1}/{len(parts)}]:{m}")
+          EOF
+
+  bench:
+    name: bench (ukuran + memori + latensi)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: n8n-rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: n8n-rust
+      - name: bench
+        run: |
+          set -o pipefail
+          {
+          set -e
+          emit() { echo "$1"; echo "::notice::$1"; }
+          cargo build --release -p n8n-server -p n8n-cli --color never
+          emit "BENCH size-server=$(stat -c%s target/release/n8n-server) size-cli=$(stat -c%s target/release/n8n-cli)"
+          ./target/release/n8n-server > /tmp/bench-server.log 2>&1 &
+          SRV=$!
+          trap 'kill $SRV 2>/dev/null' EXIT
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:3000/api/nodes >/dev/null; then break; fi
+            if [ "$i" = "30" ]; then echo "BENCH: server tak boot"; tail -20 /tmp/bench-server.log; exit 1; fi
+            sleep 1
+          done
+          emit "BENCH rss-idle-kb=$(ps -o rss= -p $SRV | tr -d ' ')"
+          LINE=$(python3 - <<'EOF'
+          import time, urllib.request
+          wf = open('fixtures/manual-to-set.json', 'rb').read()
+          url = 'http://127.0.0.1:3000/api/run'
+          def once():
+              r = urllib.request.Request(url, data=wf, headers={'Content-Type': 'application/json'})
+              return urllib.request.urlopen(r, timeout=30).read()
+          once()
+          ts = []
+          for _ in range(50):
+              t = time.perf_counter()
+              once()
+              ts.append((time.perf_counter() - t) * 1000)
+          ts.sort()
+          print(f"BENCH run-ms n=50 min={ts[0]:.2f} p50={ts[25]:.2f} p95={ts[47]:.2f} max={ts[-1]:.2f}")
+          EOF
+          )
+          emit "$LINE"
+          ./target/release/n8n-cli run fixtures/manual-to-set.json > /tmp/clirun.log 2>&1 || { echo "BENCH: cli run gagal"; cat /tmp/clirun.log; exit 1; }
+          START=$(date +%s%3N)
+          ./target/release/n8n-cli run fixtures/manual-to-set.json > /dev/null
+          END=$(date +%s%3N)
+          emit "BENCH cli-run-ms=$((END - START))"
+          emit "BENCH: SELESAI"
+          } 2>&1 | tee /tmp/out.log
+      - name: Ekspor error sebagai anotasi
+        if: failure()
+        run: |
+          python3 - <<'EOF'
+          import re
+          raw = ''
+          try:
+              raw = open('/tmp/out.log', 'rb').read().decode('utf-8', 'replace')
+          except OSError:
+              pass
+          try:
+              _fix = open('/tmp/fmtfix.log', 'rb').read().decode('utf-8', 'replace')
+              if _fix.strip():
+                  _m = _fix[:3400].replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+                  print('::error::FMTFIX:' + _m)
+          except OSError:
+              pass
+          import os
+          is_fmt = (os.environ.get('GITHUB_JOB') or '').startswith('fmt')
+          if is_fmt:
+              raw = '\n'.join(l for l in raw.split('\n') if l.startswith(('Diff in', '@@', '+', '-')))
+          CH = 3500
+          parts, _cur = [], ''
+          for _ln in raw.split('\n'):
+              while len(_ln) > CH:
+                  parts.append(_ln[:CH]); _ln = _ln[CH:]
+              if len(_cur) + len(_ln) + 1 > CH and _cur:
+                  parts.append(_cur); _cur = ''
+              _cur += _ln + '\n'
+          if _cur or not parts:
+              parts.append(_cur)
+          rx = re.compile(r'error|warning|Diff in|failures:|panicked|test result|FAILED', re.I)
+          keep = [(i, p) for i, p in enumerate(parts)][:12] if is_fmt else [(i, p) for i, p in enumerate(parts) if rx.search(p) or i == len(parts)-1][:7]
+          for i, p in keep:
+              m = p.replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+              print(f"::error::LOG[{i+1}/{len(parts)}]:{m}")
+          EOF

@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Tag vX.Y.Z -> build release linux x86_64 -> GitHub Release berisi tarball
+# (server + cli + fixture contoh). Idempoten: re-run menimpa aset.
+
+jobs:
+  linux:
+    name: release linux x86_64
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: n8n-rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: n8n-rust
+      - name: build release
+        run: set -o pipefail; cargo build --release -p n8n-server -p n8n-cli --color never 2>&1 | tee /tmp/out.log
+      - name: paket
+        run: |
+          set -o pipefail
+          {
+          V="${GITHUB_REF_NAME}"
+          mkdir -p /tmp/rel
+          cp target/release/n8n-server target/release/n8n-cli fixtures/manual-to-set.json /tmp/rel/
+          tar -C /tmp/rel -czf "n8n-rust-${V}-linux-x86_64.tar.gz" n8n-server n8n-cli manual-to-set.json
+          ls -la *.tar.gz
+          } 2>&1 | tee -a /tmp/out.log
+      - name: buat release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          {
+          V="${GITHUB_REF_NAME}"
+          F="n8n-rust-${V}-linux-x86_64.tar.gz"
+          NOTES="n8n-rust ${V} — 19 nodes, UI embedded, tanpa Node.js/DB."
+          NOTES="${NOTES}"$'\n\n'"Isi: n8n-server, n8n-cli (linux x86_64), manual-to-set.json (contoh)."
+          NOTES="${NOTES}"$'\n\n'"Jalan:"
+          NOTES="${NOTES}"$'\n'"  tar xzf ${F}"
+          NOTES="${NOTES}"$'\n'"  ./n8n-server   # buka http://127.0.0.1:3000"
+          if gh release view "$V" >/dev/null 2>&1; then
+            gh release upload "$V" "$F" --clobber
+          else
+            gh release create "$V" "$F" --title "$V" --notes "$NOTES"
+          fi
+          } 2>&1 | tee -a /tmp/out.log
+      - name: Ekspor error sebagai anotasi
+        if: failure()
+        run: |
+          python3 - <<'EOF'
+          import re
+          raw = ''
+          try:
+              raw = open('/tmp/out.log', 'rb').read().decode('utf-8', 'replace')
+          except OSError:
+              pass
+          try:
+              _fix = open('/tmp/fmtfix.log', 'rb').read().decode('utf-8', 'replace')
+              if _fix.strip():
+                  _m = _fix[:3400].replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+                  print('::error::FMTFIX:' + _m)
+          except OSError:
+              pass
+          import os
+          is_fmt = (os.environ.get('GITHUB_JOB') or '').startswith('fmt')
+          if is_fmt:
+              raw = '\n'.join(l for l in raw.split('\n') if l.startswith(('Diff in', '@@', '+', '-')))
+          CH = 3500
+          parts, _cur = [], ''
+          for _ln in raw.split('\n'):
+              while len(_ln) > CH:
+                  parts.append(_ln[:CH]); _ln = _ln[CH:]
+              if len(_cur) + len(_ln) + 1 > CH and _cur:
+                  parts.append(_cur); _cur = ''
+              _cur += _ln + '\n'
+          if _cur or not parts:
+              parts.append(_cur)
+          rx = re.compile(r'error|warning|Diff in|failures:|panicked|test result|FAILED', re.I)
+          keep = [(i, p) for i, p in enumerate(parts)][:12] if is_fmt else [(i, p) for i, p in enumerate(parts) if rx.search(p) or i == len(parts)-1][:7]
+          for i, p in keep:
+              m = p.replace('%', '%25').replace(chr(13), '%0D').replace(chr(10), '%0A')
+              print(f"::error::LOG[{i+1}/{len(parts)}]:{m}")
+          EOF

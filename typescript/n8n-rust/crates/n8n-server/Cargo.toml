@@ -1,0 +1,17 @@
+[package]
+name = "n8n-server"
+version = "0.8.0"
+edition = "2021"
+
+[dependencies]
+n8n-core = { path = "../n8n-core" }
+n8n-engine = { path = "../n8n-engine" }
+n8n-nodes = { path = "../n8n-nodes" }
+axum = { version = "0.7", features = ["ws"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "time", "sync", "fs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower = { version = "0.5", features = ["limit"] }
+chrono = "0.4"
+uuid = { version = "1", features = ["v4", "serde"] }

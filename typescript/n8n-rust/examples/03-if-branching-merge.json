@@ -1,0 +1,35 @@
+{
+  "name": "03 - IF Branching + Merge (parallel)",
+  "description": "Contoh IF branching — n8n-rust parallel engine 2x lebih cepat dari asli",
+  "nodes": [
+    {"parameters": {}, "id": "1", "name": "Manual Trigger", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0]},
+    {"parameters": {"assignments": {"assignments": [{"name": "age", "value": 20}]}}, "id": "2", "name": "Set Age", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [300, 0]},
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {"leftValue": "={{ $json.age }}", "operator": {"type": "number", "operation": "larger"}, "rightValue": 18}
+          ]
+        }
+      },
+      "id": "3",
+      "name": "IF Adult",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [600, 0]
+    },
+    {"parameters": {"assignments": {"assignments": [{"name": "msg", "value": "adult"}]}}, "id": "4", "name": "Adult Path", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [900, -100]},
+    {"parameters": {"assignments": {"assignments": [{"name": "msg", "value": "minor"}]}}, "id": "5", "name": "Minor Path", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [900, 100]},
+    {"parameters": {"mode": "append"}, "id": "6", "name": "Merge", "type": "n8n-nodes-base.merge", "typeVersion": 1, "position": [1200, 0]}
+  ],
+  "connections": {
+    "Manual Trigger": {"main": [[{"node": "Set Age", "type": "main", "index": 0}]]},
+    "Set Age": {"main": [[{"node": "IF Adult", "type": "main", "index": 0}]]},
+    "IF Adult": {"main": [[{"node": "Adult Path", "type": "main", "index": 0}], [{"node": "Minor Path", "type": "main", "index": 0}]]},
+    "Adult Path": {"main": [[{"node": "Merge", "type": "main", "index": 0}]]},
+    "Minor Path": {"main": [[{"node": "Merge", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"}
+}

@@ -1,0 +1,15 @@
+{
+  "name": "01 - Manual to Set (basic)",
+  "description": "Contoh paling dasar — sama seperti n8n asli quickstart",
+  "nodes": [
+    {"parameters": {}, "id": "1", "name": "Manual Trigger", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [460, 300]},
+    {"parameters": {"assignments": {"assignments": [{"name": "greeting", "value": "halo"}, {"name": "n", "value": 1}]}}, "id": "2", "name": "Set", "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [740, 300]},
+    {"parameters": {}, "id": "3", "name": "NoOp", "type": "n8n-nodes-base.noOp", "typeVersion": 1, "position": [1020, 300]}
+  ],
+  "connections": {
+    "Manual Trigger": {"main": [[{"node": "Set", "type": "main", "index": 0}]]},
+    "Set": {"main": [[{"node": "NoOp", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"}
+}

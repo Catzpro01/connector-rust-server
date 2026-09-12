@@ -1,0 +1,17 @@
+[package]
+name = "data-plane"
+description = "Disk-backed SpillStore and blob storage. Implements kernel data contracts."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Depends on kernel ONLY. Nothing else in the workspace.
+# This edge is what makes the crate graph a real DAG rather than the cycle the
+# original blueprint described (audit A-05).
+[dependencies]
+kernel = { path = "../kernel" }
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
