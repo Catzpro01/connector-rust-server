@@ -201,41 +201,50 @@ sudo systemctl restart connector.service
 
 Agent bisa berinteraksi dengan connector server melalui **dua cara**:
 
-### Cara A: HTTP Request Langsung (Paling Simpel)
 
-Agent (Claude Code, Cursor, atau agen otonom lainnya) cukup kirim HTTP request ke server tanpa install apapun.
+### Cara A: HTTP Request Langsung (Paling Simpel, untuk agent otonom)
 
 ```bash
-# Tes koneksi
 curl http://VPS_IP:3210/health
-
-# Jalankan perintah di VPS
 curl -X POST http://VPS_IP:3210/api/shell/exec \
   -H "Content-Type: application/json" \
-  -d '{
-    "command": "ls -la /var/lib/connector",
-    "agent": "nama_agent_kamu",
-    "project": "nama_project"
-  }'
+  -d '{"command": "ls", "agent": "alex", "project": "smoke-app"}'
 ```
 
-### Cara B: Install CLI Node.js (dari TypeScript reference)
+### Cara B: connector-cli v2 via Git Clone (direkomendasikan)
+
+**Tidak perlu `npm install` — zero dependency, butuh Node.js 18+ saja.**
 
 ```bash
-# Masuk ke direktori TypeScript reference yang ada di repo
-cd /path/ke/connector-rust-server/typescript
+# 1. Clone sekali ke direktori permanen
+git clone https://github.com/Catzpro01/connector-rust-server.git ~/.connector-server-rs
 
-# Install dependencies
-npm install
+# 2. Masuk ke folder CLI
+cd ~/.connector-server-rs/cli
 
-# Build CLI
-npm run build
+# 3. Buat symlink global (akses dari mana saja)
+npm link
 
-# Install global (opsional, supaya bisa dipanggil dari mana saja)
-npm install -g .
+# 4. Verifikasi
+connector-cli --help
+```
 
-# Jalankan
-connector-cli
+Setup config server:
+
+```bash
+connector-cli setting set serverUrl http://103.55.37.234:3210
+connector-cli setting set agentName alex
+connector-cli setting set defaultProject smoke-app
+```
+
+Config tersimpan permanen di `~/.connector-cli/config.json`.
+
+### Update CLI ke versi terbaru
+
+```bash
+cd ~/.connector-server-rs
+git pull origin master
+# Tidak perlu npm install atau build ulang
 ```
 
 ### Cara C: Setup `.mcp.json` untuk AI Agent (Claude Code / Cursor)
@@ -256,7 +265,7 @@ Buat file `.mcp.json` di root project workspace agent:
 }
 ```
 
-Ini memungkinkan AI agent (Claude Code, Cursor, dsb) otomatis mendeteksi dan menggunakan connector server sebagai MCP tool.
+
 
 ### 3.1 Konfigurasi Agent (File Config Lokal)
 
