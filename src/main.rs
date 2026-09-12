@@ -10,7 +10,9 @@ mod telegram;
 
 use audit::AuditManager;
 use axum::{
-    extract::{Json, State},
+    extract::{Json, Query, State},
+    http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
     Router,
 };
@@ -21,6 +23,7 @@ use linter::MattPocockLinter;
 use policy::PolicyManager;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::process::Command;
 use std::sync::Arc;
 use swarming::ZeroCollisionSwarming;
 use telegram::TelegramAdminBot;
@@ -64,6 +67,33 @@ struct LockRequest {
 #[derive(Deserialize)]
 struct LintRequest {
     code: String,
+}
+
+#[derive(Deserialize)]
+struct ShellExecRequest {
+    command: String,
+    agent: Option<String>,
+    project: Option<String>,
+    cwd: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AuditLogRequest {
+    agent: String,
+    project: String,
+    prompt: String,
+    output: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AuditQueryParams {
+    agent: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
+struct PolicyToggleRequest {
+    toggle: String,
 }
 
 #[tokio::main]
@@ -117,6 +147,10 @@ async fn main() {
         .route("/api/evolution/synthesize", post(synthesize_handler))
         .route("/api/evolution/skills", get(list_skills_handler))
         .route("/api/lint/mattpocock", post(lint_handler))
+        .route("/api/shell/exec", post(shell_exec_handler))
+        .route("/api/audit/log", post(audit_log_handler))
+        .route("/api/audit/records", get(audit_records_handler))
+        .route("/api/policy", get(get_policy_handler).post(toggle_policy_handler))
         .with_state(state);
 
     let port: u16 = std::env::var("PORT")
@@ -186,4 +220,134 @@ async fn list_skills_handler(State(state): State<AppState>) -> Json<Vec<evolutio
 async fn lint_handler(Json(req): Json<LintRequest>) -> Json<linter::LintReport> {
     let report = MattPocockLinter::lint(&req.code);
     Json(report)
+}
+
+// 1. Shell Exec Endpoint with Terminal Lock & Stealth Trap Enforcement
+async fn shell_exec_handler(
+    State(state): State<AppState>,
+    Json(req): Json<ShellExecRequest>,
+) -> impl IntoResponse {
+    let pol = state.policy.lock().await;
+    if pol.policy.terminal_locked {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "success": false,
+                "error": "Terminal dikunci oleh administrator via Telegram bot."
+            })),
+        );
+    }
+
+    let agent = req.agent.clone().unwrap_or_else(|| "alex".to_string());
+    let project = req.project.clone().unwrap_or_else(|| "smoke-app".to_string());
+
+    // Stealth trap enforcement: trap 'exit' or terminal kills
+    let trimmed = req.command.trim().to_lowercase();
+    if pol.policy.stealth_trap && (trimmed == "exit" || trimmed.starts_with("exit ") || trimmed == "logout") {
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "success": true,
+                "trapped": true,
+                "stdout": "Stealth trap active: Agent session kept alive in background sandbox.\n",
+                "stderr": ""
+            })),
+        );
+    }
+    drop(pol);
+
+    let cmd_str = req.command.clone();
+    let working_dir = req.cwd.unwrap_or_else(|| "/home/fern".to_string());
+
+    let output_res = tokio::task::spawn_blocking(move || {
+        Command::new("bash")
+            .arg("-c")
+            .arg(&cmd_str)
+            .current_dir(&working_dir)
+            .output()
+    })
+    .await;
+
+    match output_res {
+        Ok(Ok(output)) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+            // Record into blackbox audit flight recorder
+            let mut audit = state.audit.lock().await;
+            audit.record(&agent, &project, &req.command, Some(&stdout));
+
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "success": output.status.success(),
+                    "exit_code": output.status.code(),
+                    "stdout": stdout,
+                    "stderr": stderr
+                })),
+            )
+        }
+        _ => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "success": false,
+                "error": "Failed to execute shell command"
+            })),
+        ),
+    }
+}
+
+// 2. Audit API Endpoints
+async fn audit_log_handler(
+    State(state): State<AppState>,
+    Json(req): Json<AuditLogRequest>,
+) -> Json<serde_json::Value> {
+    let mut audit = state.audit.lock().await;
+    audit.record(&req.agent, &req.project, &req.prompt, req.output.as_deref());
+    Json(serde_json::json!({ "success": true }))
+}
+
+async fn audit_records_handler(
+    State(state): State<AppState>,
+    Query(params): Query<AuditQueryParams>,
+) -> Json<Vec<audit::AuditRecord>> {
+    let audit = state.audit.lock().await;
+    let limit = params.limit.unwrap_or(20);
+    if let Some(agent) = params.agent {
+        Json(audit.get_agent_records(&agent, limit))
+    } else {
+        Json(audit.get_recent_records(limit))
+    }
+}
+
+// 3. Policy API Endpoints
+async fn get_policy_handler(State(state): State<AppState>) -> Json<policy::AgentPolicy> {
+    let pol = state.policy.lock().await;
+    Json(pol.policy.clone())
+}
+
+async fn toggle_policy_handler(
+    State(state): State<AppState>,
+    Json(req): Json<PolicyToggleRequest>,
+) -> Json<policy::AgentPolicy> {
+    let mut pol = state.policy.lock().await;
+    match req.toggle.as_str() {
+        "stealth_trap" => {
+            pol.toggle_stealth_trap();
+        }
+        "auto_import_memory" => {
+            pol.toggle_auto_import_memory();
+        }
+        "auto_git_sync" => {
+            pol.toggle_auto_git_sync();
+        }
+        "syncthing_sync" => {
+            pol.toggle_syncthing();
+        }
+        "terminal_locked" => {
+            pol.toggle_terminal_lock();
+        }
+        _ => {}
+    }
+    Json(pol.policy.clone())
 }
