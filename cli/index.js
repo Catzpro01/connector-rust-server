@@ -1,5 +1,5 @@
-!/usr/bin/env node
-// connector-cli v2 — REST native client untuk connector-server-rs
+#!/usr/bin/env node
+// connector-cli v2 -- REST native client untuk connector-server-rs
 // Install: git clone ... && cd cli && npm link
 // Usage:   connector-cli [command] [options]
 //          connector-cli  (tanpa argumen = mode TUI interaktif)
@@ -189,7 +189,7 @@ function argVal(args, flag) {
 
 function printHelp() {
   sep();
-  console.log(' CONNECTOR-CLI v2 — REST native client (connector-server-rs)');
+  console.log(' CONNECTOR-CLI v2 -- REST native client (connector-server-rs)');
   sep();
   console.log('');
   console.log(' PERINTAH:');

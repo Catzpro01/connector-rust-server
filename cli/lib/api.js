@@ -1,4 +1,4 @@
-/ lib/api.js — REST client untuk connector-server-rs
+// lib/api.js -- REST client untuk connector-server-rs
 // Semua 12 endpoint didukung, zero external dependency (pakai native fetch Node 18+)
 
 export class ConnectorAPI {

@@ -1,4 +1,4 @@
-/ lib/tui.js — Interactive TUI menu untuk connector-cli
+// lib/tui.js -- Interactive TUI menu untuk connector-cli
 import { createInterface } from 'readline';
 import { prompt } from './config.js';
 
@@ -29,14 +29,14 @@ export async function interactiveMenu(api, cfg, saveConfig) {
   while (true) {
     console.clear();
     printHeader('MENU UTAMA', cfg.agentName, cfg.serverUrl);
-    console.log('  1. status server       — health + policy');
-    console.log('  2. jalankan perintah   — shell/exec di VPS');
-    console.log('  3. lihat audit log     — rekaman aksi agent');
-    console.log('  4. lock file           — kunci file (swarming)');
-    console.log('  5. lihat semua lock    — daftar lock aktif');
-    console.log('  6. skill               — lihat / tambah skill');
-    console.log('  7. toggle policy       — stealth_trap, terminal_locked, dsb');
-    console.log('  8. setting             — ubah server URL, agent name');
+    console.log('  1. status server       -- health + policy');
+    console.log('  2. jalankan perintah   -- shell/exec di VPS');
+    console.log('  3. lihat audit log     -- rekaman aksi agent');
+    console.log('  4. lock file           -- kunci file (swarming)');
+    console.log('  5. lihat semua lock    -- daftar lock aktif');
+    console.log('  6. skill               -- lihat / tambah skill');
+    console.log('  7. toggle policy       -- stealth_trap, terminal_locked, dsb');
+    console.log('  8. setting             -- ubah server URL, agent name');
     console.log('  9. exit');
     sep();
 
@@ -164,7 +164,7 @@ async function menuLocks(api) {
     sep();
     if (!locks.length) { console.log('(tidak ada lock aktif)'); }
     for (const l of locks) {
-      console.log(`  ${l.file_path}  [${l.project}]  — agent: ${l.agent}  exp: ${l.expires_at || '-'}`);
+      console.log(`  ${l.file_path}  [${l.project}]  -- agent: ${l.agent}  exp: ${l.expires_at || '-'}`);
     }
   } catch (e) {
     console.error('❌ Error:', e.message);

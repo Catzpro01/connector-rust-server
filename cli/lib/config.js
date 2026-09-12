@@ -1,4 +1,4 @@
-/ lib/config.js — Config manager untuk connector-cli
+// lib/config.js -- Config manager untuk connector-cli
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
