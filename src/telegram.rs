@@ -218,6 +218,7 @@ impl TelegramAdminBot {
                     lines.push(format!("{} *{}* ({})", icon, c.slug, if c.is_running { "Running" } else { "Stopped" }));
                     lines.push(format!("  ⚡ CPU  : `{}`", c.cpu));
                     lines.push(format!("  🧠 RAM  : `{}`", c.mem));
+                    lines.push(format!("  📦 Git  : {}", c.git_status));
                     lines.push("".to_string());
                 }
                 lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━".to_string());
@@ -299,9 +300,25 @@ impl TelegramAdminBot {
                                 self.delete_message(chat_id, msg_id).await;
 
                                 let text = msg.text.unwrap_or_default().trim().to_lowercase();
+                                let mut banner: Option<String> = None;
                                 let mut target_room = "main".to_string();
 
-                                if text.contains("podman") {
+                                if text.starts_with("/simpan") {
+                                    let slug = if text.starts_with("/simpan_") {
+                                        text.replace("/simpan_", "").trim().to_string()
+                                    } else {
+                                        let parts: Vec<&str> = text.split_whitespace().collect();
+                                        if parts.len() > 1 {
+                                            parts[1].trim().to_string()
+                                        } else {
+                                            let containers = PodmanManager::list_containers();
+                                            containers.first().map(|c| c.slug.clone()).unwrap_or_else(|| "smoke-app".to_string())
+                                        }
+                                    };
+                                    let res = PodmanManager::save_git_project(&slug);
+                                    banner = Some(res);
+                                    target_room = "podman".to_string();
+                                } else if text.contains("podman") {
                                     target_room = "podman".to_string();
                                 } else if text.contains("hardware") || text.contains("biaya") {
                                     target_room = "status".to_string();
@@ -327,7 +344,7 @@ impl TelegramAdminBot {
                                     target_room = "podman".to_string();
                                 }
 
-                                self.render_room(chat_id, &target_room, None).await;
+                                self.render_room(chat_id, &target_room, banner.as_deref()).await;
                             }
                         }
                     }
