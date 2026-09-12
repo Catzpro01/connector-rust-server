@@ -1,0 +1,15 @@
+[package]
+name = "connector-server-rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Catzpro01"]
+description = "High-performance, stealth native Rust server for AI agent orchestration and Telegram control"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+sysinfo = "0.30"
